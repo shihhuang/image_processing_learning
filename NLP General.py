@@ -16,6 +16,10 @@
 # # **Set up**
 #
 # Please follow the instructions from README.md to set up the virtual environment. Make sure when you run the notebook you are using the kernel you set up which uses the virtual environment.
+#
+# Learning materials:
+# * Tensorflow: <https://www.youtube.com/playlist?list=PLQY2H8rRoyvzDbLUZkbudP-MFQZwNmU4S>
+# * Explanation: <https://www.youtube.com/watch?v=GGLr-TtKguA&t=2275s>
 
 # ## **Import packages**
 
@@ -197,6 +201,25 @@ plt.title("Word Count by " + group_by)
 from tensorflow.keras.preprocessing.text import Tokenizer
 from tensorflow.keras.preprocessing.sequence import pad_sequences
 
+# ## Train and test split
+
+train_ratio = 0.8
+training_size = int(round(len(sentences)*train_ratio,0))
+print(training_size)
+
+# +
+training_sentences = sentences[0:training_size]
+testing_sentences = sentences[training_size:]
+
+training_labels = labels[0:training_size]
+testing_labels = labels[training_size:]
+# -
+
+print("Training obs:", len(training_sentences))
+print("Testing obs:", len(testing_sentences))
+print("Total obs:", len(training_sentences)+len(testing_sentences))
+print("Total obs from original:", len(sentences))
+
 tokenizer = Tokenizer(oov_token="<OOV>")
 
 tokenizer.fit_on_texts(sentences)
@@ -206,6 +229,8 @@ sequences = tokenizer.texts_to_sequences(sentences)
 padded = pad_sequences(sequences, padding='post')
 
 # **Note that we have chosen "post" padding, meaning adding 0's to the end of the sentence if it is less than 40 characters. As shown above, the maximum number of words in the headlines is 40 and therefore headlines less than 40 words will be padded. QUESTION: is it because we have added OOV and so the length increased from 39 to 40?**
+#
+# See documentation here: <https://www.tensorflow.org/api_docs/python/tf/keras/utils/pad_sequences>
 
 padded[0]
 
