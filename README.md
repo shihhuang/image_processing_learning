@@ -13,3 +13,8 @@ To create a virtual environment with venv:
 To set up the kernel of the virtual environment in your jupyter notebook:
 
 * Run `python -m ipykernel install --user --name venv_name --display-name "NLP Learning"`
+
+
+# Datasets
+We will use the following datasets throughout the notebook, more datasets might be added into the list:
+* https://www.kaggle.com/datasets/rmisra/news-headlines-dataset-for-sarcasm-detection 
