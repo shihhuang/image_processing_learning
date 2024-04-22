@@ -30,6 +30,7 @@ import json
 
 import matplotlib.pyplot as plt
 from nltk.probability import FreqDist
+import tensorflow as tf
 # from tqdm import tqdm
 # import pickle, argparse, os
 # import data_analysis as da
@@ -150,6 +151,9 @@ all_words_list = [xx for x in sentences for xx in x.split() if xx not in common_
 all_top_n_words = extract_top_n_words(all_words_list)
 all_top_n_words
 
+num_unique_words = len(set(all_words_list))
+num_unique_words
+
 # **We check if the top appearing words could be different for different labels**
 
 sarcastic_headlines = list(sentences_df[sentences_df['is_sarcastic']==1]['headline'])
@@ -165,8 +169,8 @@ non_sarcastic_top_n_words
 
 group_by = 'is_sarcastic'
 summary_key_words_by_label = pd.DataFrame()
-labels = list(sentences_df[group_by].unique())
-for label in labels:
+labels_plot = list(sentences_df[group_by].unique())
+for label in labels_plot:
     headline_label_list = list(sentences_df[sentences_df[group_by] == label]['headline'])
     headline_label_list_words = [xx for x in headline_label_list for xx in x.split() if xx not in common_stopwords]
     top_n_words = extract_top_n_words(headline_label_list_words)
@@ -202,10 +206,20 @@ from tensorflow.keras.preprocessing.text import Tokenizer
 from tensorflow.keras.preprocessing.sequence import pad_sequences
 
 # ## Train and test split
+#
+# We don't want the model to see anything from the test set when it is training. If we really want to test its effectiveness - make sure the neural net only sees the training data. **Therefore** we split into train and test before tokenizing.
 
+# +
 train_ratio = 0.8
 training_size = int(round(len(sentences)*train_ratio,0))
 print(training_size)
+
+vocab_size = 10000
+embedding_dim = 16
+max_length = 40
+trunc_type='post'
+padding_type='post'
+oov_tok = "<OOV>"
 
 # +
 training_sentences = sentences[0:training_size]
@@ -220,19 +234,145 @@ print("Testing obs:", len(testing_sentences))
 print("Total obs:", len(training_sentences)+len(testing_sentences))
 print("Total obs from original:", len(sentences))
 
-tokenizer = Tokenizer(oov_token="<OOV>")
+# ## Tokenizing with tokenizer 
+#
+# - Initiate tokenizer with *Tokenizer*
+# - Use method *fit_on_texts* to convert words into indexes, this is like creating a dictionary
+# - Then convert the training_sentences into training sequences (number format) using *tokenizer.texts_to_sequences()*
+# - Also pad the sequences using *pad_sequences()*
 
-tokenizer.fit_on_texts(sentences)
+tokenizer_all = Tokenizer(oov_token=oov_tok)
+tokenizer_all.fit_on_texts(sentences)
+word_index_all = tokenizer_all.word_index
+
+tokenizer = Tokenizer(oov_token=oov_tok)
+
+tokenizer.fit_on_texts(training_sentences)
 word_index = tokenizer.word_index
 
-sequences = tokenizer.texts_to_sequences(sentences)
-padded = pad_sequences(sequences, padding='post')
+print("Number of words tokenized:", len(word_index)-1)
+print("Number of original words tokenized", len(word_index_all)-1)
+
+# +
+training_sequences = tokenizer.texts_to_sequences(training_sentences)
+training_padded = pad_sequences(training_sequences, padding=padding_type, 
+                                truncating=trunc_type, maxlen=max_length)
+
+testing_sequences = tokenizer.texts_to_sequences(testing_sentences)
+testing_padded = pad_sequences(testing_sequences, padding=padding_type, 
+                               truncating=trunc_type, maxlen=max_length)
+
+
+
+training_padded = np.array(training_padded)
+training_labels = np.array(training_labels)
+testing_padded = np.array(testing_padded)
+testing_labels = np.array(testing_labels)
+
+# -
+
+training_labels
 
 # **Note that we have chosen "post" padding, meaning adding 0's to the end of the sentence if it is less than 40 characters. As shown above, the maximum number of words in the headlines is 40 and therefore headlines less than 40 words will be padded. QUESTION: is it because we have added OOV and so the length increased from 39 to 40?**
 #
 # See documentation here: <https://www.tensorflow.org/api_docs/python/tf/keras/utils/pad_sequences>
 
-padded[0]
+training_sentences[1]
 
-print("Number of unique words including <OOV>:", str(len(word_index)))
-print("Number of observations with the number of 'features' after padding:", padded.shape)
+training_sequences[0]
+
+training_padded[0]
+
+print("Number of unique words including <OOV> in training:", str(len(word_index)))
+print("Number of observations with the number of 'features' after padding in training:", training_padded.shape)
+
+# ## Embeddings
+# - This step is to understand the context and relationships between words. Words that only appear in the Sarcastic headlines would have a strong components in the Sarcastic direction.
+# - The neural net can learn from the training process which words are more on the Sarcastic side and which are not
+# - After the full training, the values are "added" together
+
+model = tf.keras.Sequential([
+    tf.keras.layers.Embedding(vocab_size, embedding_dim), # Learning the meaning and context epoch by epoch
+    tf.keras.layers.GlobalAveragePooling1D(), # Sum up the vectors - adding the vectors
+    tf.keras.layers.Dense(24, activation='relu'), # activation 
+    tf.keras.layers.Dense(1, activation='sigmoid'),
+])
+model.compile(loss='binary_crossentropy', optimizer='adam', metrics=['accuracy'])
+
+model.summary()
+
+num_epochs = 30
+history = model.fit(training_padded, training_labels, epochs=num_epochs,
+                    validation_data=(testing_padded, testing_labels), verbose=2)
+
+model.summary()
+
+
+# +
+def plot_graphs(history, string):
+    plt.figure(figsize=(8,6))
+
+    total_epochs = len(history.history[string])
+    epochs = [i for i in range(total_epochs)]
+    plt.plot(history.history[string])
+    plt.plot(history.history['val_'+string])
+
+    # Add data labels to each point
+    for i, j in zip(epochs, history.history[string]):
+        plt.text(i, j*0.99, f'{round(j,2)}', ha='center', va='center',fontsize=8,rotation=45)
+
+    # Add data labels to each point
+    for i, j in zip(epochs, history.history['val_'+string]):
+        plt.text(i, j*0.99, f'{round(j,2)}', ha='center', va='center',fontsize=8,rotation=45)
+    
+    plt.xlabel("Epochs")
+    plt.ylabel(string)
+    plt.legend([string, 'val_'+string])
+    plt.show()
+  
+plot_graphs(history, "accuracy")
+plot_graphs(history, "loss")
+# -
+
+new_sentences = ["granny starting to fear spiders in the garden might be real",
+            "game of thrones season finale showing this sunday night"]
+new_sequences = tokenizer.texts_to_sequences(new_sentences)
+new_padded = pad_sequences(new_sequences, maxlen=max_length, padding=padding_type, truncating=trunc_type)
+print(model.predict(new_padded))
+
+# # Recurrent Neural Network
+
+# - Understanding sequences - we can think of the model as taking f(Data, Label) which is the rule -> think of the $n_x=n_{x-1} + n_{x-2}$
+# - The numerical values can remain in the sequence for example
+# - The recurrent neuron takes values sequentially while remaining the outputs from previous neurons
+# - This weakens as time goes by -> helpful when required context is closeby
+# - There could be problems where we need longer memory
+
+
+
+# # Long Short Term Memory (LSTM)
+# * An architextual that has "context" which can bring the meaning from the beginning of the sentence
+# * It could be bidirectional! Words from future can give you context of current word. For more leanrning <deeplearning.ai >
+
+# +
+lstm_model = tf.keras.Sequential([
+    tf.keras.layers.Embedding(vocab_size, embedding_dim), # Learning the meaning and context epoch by epoch
+    tf.keras.layers.Bidirectional(tf.keras.layers.LSTM(64, return_sequences=True)), # Sum up the vectors - adding the vectors
+    tf.keras.layers.Bidirectional(tf.keras.layers.LSTM(32)),
+    tf.keras.layers.Dense(24, activation='relu'), # activation 
+    tf.keras.layers.Dense(1, activation='sigmoid'),
+])
+
+lstm_model.compile(loss='binary_crossentropy', optimizer='adam', metrics=['accuracy'])
+# -
+
+lstm_model.summary()
+
+num_epochs = 10
+lstm_history = lstm_model.fit(training_padded, training_labels, epochs=num_epochs,
+                        validation_data=(testing_padded, testing_labels), verbose=2)
+
+lstm_model.summary()
+
+plot_graphs(lstm_history, "accuracy")
+plot_graphs(history, "accuracy")
