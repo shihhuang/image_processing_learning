@@ -189,4 +189,14 @@ encoded_demo_examples.shape
 
 np.sum(encoded_demo_examples, axis=0)
 
+# +
+from sklearn.feature_extraction.text import TfidfVectorizer
 
+tfidf_vectorizer = TfidfVectorizer()
+text = ["I have an apple", "The apple is red", "I like red like like"]
+tfidf_vectorizer.fit(text)
+X = tfidf_vectorizer.transform(text).toarray()
+X
+# -
+
+tfidf_vectorizer.get_feature_names_out()
